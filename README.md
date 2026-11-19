@@ -173,7 +173,7 @@ Schema-first runtimes that expose structured JSON workflows used by the web laun
 - Defaults to `http://127.0.0.1:3939`; override host/port with `AIHUB_WEB_HOST`/`AIHUB_WEB_PORT`.
 - Protect APIs with `AIHUB_WEB_TOKEN` or `--auth-token`.
 - The Web Launcher UI already includes Guided Scene Builder + Quick Prompt for Prompt Builder and a Character Studio page for cards, datasets, and tag helpers.
-- Surfaced routes include install triggers, manifest browsing, prompt compilation (with history saved to `~/.cache/aihub/prompt_builder/prompt_history.json`), character registry reads, and job logs. Prompt bundles are written to `~/.cache/aihub/prompt_builder/prompt_bundle.json` unless `PROMPT_BUNDLE_PATH` is set.
+- Surfaced routes include install triggers, manifest browsing, prompt compilation, character registry reads, and job logs. Prompt history and bundles are saved under the user data directory's `prompt_builder/` folder; `PROMPT_BUNDLE_PATH` can override the bundle location. See [storage and migration](docs/runtime-reliability.md).
 
 ### Legacy YAD menu (deprecated)
 - `./launcher/linux/aihub_menu.sh` now redirects to the Web Launcher to keep Linux UX aligned with other platforms.

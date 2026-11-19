@@ -29,7 +29,10 @@ When exposing beyond localhost, set a bearer token and ensure your firewall/netw
 ## API surface (quick reference)
 - `GET /api/status` — counts of actions/manifests/characters.
 - `GET /api/actions` — available launcher/install commands.
-- `POST /api/actions {"action": "run_webui"}` — trigger a launcher action (logs written under `~/.cache/aihub/web_launcher/logs`).
+- `POST /api/actions {"action": "run_webui"}` — queue a launcher action. Durable records and logs live under the user data directory's `jobs/` folder; see [runtime reliability](runtime-reliability.md).
+- `GET /api/jobs/<id>` — inspect persisted status, errors and log tail.
+- `POST /api/jobs/<id>/cancel` — request cancellation of a job owned by this launcher.
+- `POST /api/storage/migrate` — explicitly import legacy data, retaining originals and refusing conflicts.
 - `GET /api/manifests` — curated model and LoRA manifests.
 - `POST /api/installations {"models": [], "loras": []}` — start curated installers; `GET /api/installations` polls progress and history.
 - `POST /api/prompt/compile {"scene": {...}}` — build prompt bundles used by launchers.
