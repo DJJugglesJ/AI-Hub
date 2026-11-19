@@ -1,3 +1,6 @@
+import pytest
+import os
+
 import json
 import subprocess
 import sys
@@ -59,8 +62,10 @@ def test_invalid_gpu_mode_is_rejected(tmp_path):
     assert "gpu_mode" in result.stderr
 
 
+@pytest.mark.linux
 def test_install_script_creates_backups_and_applies_headless(tmp_path):
     env = {
+        **os.environ,
         "HOME": str(tmp_path),
         "CONFIG_STATE_FILE": str(tmp_path / "config.json"),
         "CONFIG_FILE": str(tmp_path / "installer.conf"),
@@ -68,7 +73,6 @@ def test_install_script_creates_backups_and_applies_headless(tmp_path):
         "AIHUB_SKIP_INSTALL_STEPS": "1",
     }
 
-    env["PATH"] = f"{env['HOME']}:{Path('/usr/bin')}"  # ensure sudo path is visible
 
     state_file = Path(env["CONFIG_STATE_FILE"])
     state_file.write_text("{\n  \"version\": 2\n}\n")

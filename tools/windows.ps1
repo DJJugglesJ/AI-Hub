@@ -32,7 +32,11 @@ function Get-AIHubPython {
   $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
   if ($pythonCmd) { return $pythonCmd.Source }
   $pyCmd = Get-Command py -ErrorAction SilentlyContinue
-  if ($pyCmd) { return "$($pyCmd.Source) -3" }
+  if ($pyCmd) {
+    $resolvedPython = & $pyCmd.Source -3 -c "import sys; print(sys.executable)"
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve Python 3.' }
+    return $resolvedPython
+  }
   throw 'Python 3 was not found. Install Python 3.x or set AIHUB_PYTHON to the executable path.'
 }
 
@@ -44,27 +48,25 @@ function Invoke-AIHubSetup {
   )
 
   $projectRoot = Get-AIHubProjectRoot
-  $python = Get-AIHubPython -PreferVenv:$true
   $venvRoot = Join-Path $projectRoot '.venv'
-
+  $venvPython = Join-Path $venvRoot 'Scripts/python.exe'
   if ($Force -and (Test-Path $venvRoot)) {
-    Remove-Item -Recurse -Force $venvRoot
+    $resolvedVenv = (Resolve-Path -LiteralPath $venvRoot).ProviderPath
+    if ($resolvedVenv -ne [IO.Path]::GetFullPath($venvRoot) -or
+        (Get-Item -LiteralPath $venvRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      throw 'Refusing to remove a virtual environment outside the project.'
+    }
+    Remove-Item -LiteralPath $resolvedVenv -Recurse -Force
   }
-
-  if (-not (Test-Path $venvRoot)) {
-    Push-Location $projectRoot
-    & (Get-AIHubPython) -m venv .venv
-    Pop-Location
+  if (-not (Test-Path $venvPython)) {
+    & (Get-AIHubPython) -m venv $venvRoot | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
   }
-
   if (-not $SkipInstall) {
-    Push-Location $projectRoot
-    & $python -m pip install --upgrade pip
-    & $python -m pip install -r requirements.txt
-    Pop-Location
+    & $venvPython -m pip install -r (Join-Path $projectRoot 'requirements-dev.txt') | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
   }
-
-  return (Join-Path $venvRoot 'Scripts/python.exe')
+  return $venvPython
 }
 
 function Invoke-AIHubInstall {
@@ -99,13 +101,13 @@ function Invoke-AIHubMenu {
 function Start-AIHubWebLauncher {
   [CmdletBinding()]
   param(
-    [string]$Host = '127.0.0.1',
+    [Alias('Host')][string]$BindAddress = '127.0.0.1',
     [int]$Port = 3939,
     [string[]]$ExtraArgs = @()
   )
   $projectRoot = Get-AIHubProjectRoot
   $webScript = Join-Path $projectRoot 'launcher/windows/start_web_launcher.ps1'
-  $env:AIHUB_WEB_HOST = $Host
+  $env:AIHUB_WEB_HOST = $BindAddress
   $env:AIHUB_WEB_PORT = $Port
   & $webScript @ExtraArgs
 }
@@ -140,8 +142,17 @@ function Invoke-AIHubLint {
   $python = Invoke-AIHubSetup -SkipInstall:$SkipInstall
   $projectRoot = Get-AIHubProjectRoot
   Push-Location $projectRoot
-  & $python -m compileall launcher modules tests
-  Pop-Location
+  try {
+    & $python -m compileall -q launcher modules tests
+    if ($LASTEXITCODE -ne 0) { throw 'Python syntax checks failed.' }
+    Get-ChildItem -Path $projectRoot -Recurse -Filter *.ps1 |
+      Where-Object { $_.FullName -notlike "$projectRoot\.venv\*" } | ForEach-Object {
+        $tokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+        if ($parseErrors) { throw "PowerShell syntax error in $($_.FullName): $parseErrors" }
+      }
+  } finally { Pop-Location }
 }
 
 function Invoke-AIHubTests {
@@ -150,8 +161,10 @@ function Invoke-AIHubTests {
   $python = Invoke-AIHubSetup -SkipInstall:$SkipInstall
   $projectRoot = Get-AIHubProjectRoot
   Push-Location $projectRoot
-  & $python -m pytest tests
-  Pop-Location
+  try {
+    & $python -m pytest
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+  } finally { Pop-Location }
 }
 
 function Show-HelperUsage {

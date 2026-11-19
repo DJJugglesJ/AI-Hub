@@ -23,11 +23,12 @@ class CharacterCardRegistry:
     def get(self, card_id: str) -> character_models.CharacterCard:
         """Return a Character Card by id or raise FileNotFoundError."""
 
+        character_models.character_path(self.storage_root, card_id, "card.json")
         cached = self._cache.get(card_id)
         if cached:
             return cached
 
-        card_path = self.storage_root / card_id / "card.json"
+        card_path = character_models.character_path(self.storage_root, card_id, "card.json")
         if not card_path.exists():
             raise FileNotFoundError(f"Character Card not found for id {card_id} at {card_path}")
 

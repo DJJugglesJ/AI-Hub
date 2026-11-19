@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import dataset
-from .models import CARD_STORAGE_ROOT, CharacterCard
+from .models import character_path, CARD_STORAGE_ROOT, CharacterCard
 
 
 def _load_card(character_id: str) -> CharacterCard:
-    card_path = CARD_STORAGE_ROOT / character_id / "card.json"
+    card_path = character_path(CARD_STORAGE_ROOT, character_id, "card.json")
     if not card_path.exists():
         raise FileNotFoundError(f"Character Card not found for id {character_id} at {card_path}")
     return CharacterCard.load(character_id, path=card_path)
@@ -115,7 +115,7 @@ def run_lora_training(character_id: str) -> Optional[str]:
         card.lora_file = str(output_path)
         if card.lora_default_strength is None:
             card.lora_default_strength = config.get("lora_default_strength", 0.7)
-        card.save(path=CARD_STORAGE_ROOT / character_id / "card.json")
+        card.save(path=character_path(CARD_STORAGE_ROOT, character_id, "card.json"))
         return str(output_path)
 
     return None

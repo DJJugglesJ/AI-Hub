@@ -130,7 +130,7 @@ def test_cli_emits_standard_success_shape(capsys):
 
     assert payload["error"] is None
     assert payload["metadata"] == {}
-    assert payload["data"]["path"].endswith("card-json/card.json")
+    assert Path(payload["data"]["path"]).parts[-2:] == ("card-json", "card.json")
 
 
 def test_cli_emits_standard_error_shape(capsys):

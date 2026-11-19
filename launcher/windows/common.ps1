@@ -29,7 +29,7 @@ function Invoke-AIHubShellAction {
   param(
     [string]$ActionName,
     [string]$ScriptName,
-    [string[]]$AdditionalArgs = @(),
+    [string[]]$AdditionalArgs = @()
   )
 
   $projectRoot = Resolve-Path "$PSScriptRoot/../.."
@@ -49,10 +49,22 @@ function Invoke-AIHubShellAction {
     return 1
   }
 
-  $bash = Get-Command bash -ErrorAction SilentlyContinue
+  $bashPath = $Env:AIHUB_BASH
+  if (-not $bashPath) {
+    # Prefer Git Bash over the WindowsApps/WSL bash aliases.
+    $git = Get-Command git.exe -ErrorAction SilentlyContinue
+    if ($git) {
+      $candidate = Join-Path (Split-Path (Split-Path $git.Source -Parent) -Parent) 'bin/bash.exe'
+      if (Test-Path $candidate) { $bashPath = $candidate }
+    }
+  }
+  if (-not $bashPath) {
+    $bash = Get-Command bash.exe -ErrorAction SilentlyContinue
+    if ($bash -and $bash.Source -notmatch 'WindowsApps|Windows\\System32') { $bashPath = $bash.Source }
+  }
   $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-  if (-not $bash -and -not $wsl) {
-    Write-LogLine "Bash was not found. Install WSL or Git Bash to run '$ActionName'." "ERROR" -LogPath $logPath
+  if (-not $bashPath -and -not $wsl) {
+    Write-LogLine "Install Git Bash or a WSL distribution to run '$ActionName'." "ERROR" -LogPath $logPath
     return 1
   }
 
@@ -60,8 +72,12 @@ function Invoke-AIHubShellAction {
 
   Push-Location $projectRoot
   try {
-    if ($bash) {
-      & $bash.Path $scriptPath @AdditionalArgs 2>&1 | ForEach-Object {
+    if ($bashPath) {
+      foreach ($name in @('AIHUB_LOG_PATH', 'AIHUB_LOG_DIR', 'AIHUB_CONFIG_DIR', 'CONFIG_FILE', 'CONFIG_STATE_FILE', 'DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE')) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ($value) { [Environment]::SetEnvironmentVariable($name, $value.Replace('\', '/')) }
+      }
+      & $bashPath $scriptPath.Replace('\', '/') @AdditionalArgs 2>&1 | ForEach-Object {
         $msg = $_
         if ($msg -ne $null) { Write-LogLine $msg "STREAM" -LogPath $logPath }
       }
@@ -86,7 +102,20 @@ function Invoke-AIHubShellAction {
     }
 
     Write-LogLine "Bash not found; using WSL fallback for $ActionName." "WARN" -LogPath $logPath
-    & $wsl.Source --exec env "AIHUB_LOG_PATH=$wslLogPath" "AIHUB_CONFIG_DIR=$wslConfigRoot" "CONFIG_FILE=$wslConfigFile" "CONFIG_STATE_FILE=$wslStateFile" bash $wslScriptPath @AdditionalArgs 2>&1 | ForEach-Object {
+    $linuxEnv = @("AIHUB_LOG_PATH=$wslLogPath", "AIHUB_CONFIG_DIR=$wslConfigRoot", "CONFIG_FILE=$wslConfigFile", "CONFIG_STATE_FILE=$wslStateFile")
+    foreach ($name in @('HEADLESS', 'HEADLESS_UPDATE', 'CURATED_MODEL_NAMES', 'CURATED_LORA_NAMES')) {
+      $value = [Environment]::GetEnvironmentVariable($name)
+      if ($null -ne $value) { $linuxEnv += "$name=$value" }
+    }
+    foreach ($name in @('DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE', 'AIHUB_LOG_DIR', 'AIHUB_OFFLINE_BUNDLE', 'DOWNLOAD_OFFLINE_BUNDLE')) {
+      $value = [Environment]::GetEnvironmentVariable($name)
+      if ($value) {
+        $linuxPath = & $wsl.Source wslpath -a $value
+        if ($LASTEXITCODE -ne 0) { throw "Unable to translate $name for WSL." }
+        $linuxEnv += "$name=$linuxPath"
+      }
+    }
+    & $wsl.Source --exec env @linuxEnv bash $wslScriptPath @AdditionalArgs 2>&1 | ForEach-Object {
       $msg = $_
       if ($msg -ne $null) { Write-LogLine $msg "STREAM" -LogPath $logPath }
     }

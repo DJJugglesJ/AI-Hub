@@ -49,10 +49,13 @@ WEBUI_DIR="$HOME/AI/WebUI"
 GPU_LABEL=${gpu_mode:-"Unknown"}
 log_event "info" app=webui event=launch message="Launching Stable Diffusion WebUI" gpu_mode="$GPU_LABEL"
 if [[ "${HEADLESS:-0}" -eq 1 ]]; then
-  HEADLESS_HEALTH=1 HEADLESS=1 "$SCRIPT_DIR/health_webui.sh" >/dev/null
+  # A stopped service is expected before launch; diagnostics must not block it.
+  HEADLESS_HEALTH=1 HEADLESS=1 bash "$SCRIPT_DIR/health_webui.sh" >/dev/null || log_msg "Pre-launch health check reports a stopped or unconfigured service."
 fi
 
-load_prompt_bundle
+if ! load_prompt_bundle; then
+  log_msg "No usable prompt bundle; launching WebUI without a saved prompt."
+fi
 
 if [ ! -d "$WEBUI_DIR" ]; then
   if [[ "${HEADLESS:-0}" -eq 1 ]]; then
@@ -90,7 +93,7 @@ enable_xformers=$(normalize_bool "${enable_xformers:-false}")
 enable_directml=$(normalize_bool "${enable_directml:-false}")
 enable_low_vram=$(normalize_bool "${enable_low_vram:-false}")
 
-case "$gpu_mode" in
+case "${gpu_mode:-CPU}" in
   "AMD")
     export HSA_OVERRIDE_GFX_VERSION=10.3.0
     ;;

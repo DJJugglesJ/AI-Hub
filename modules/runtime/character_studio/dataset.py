@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Dict, Iterable, List
 
-from .models import CARD_STORAGE_ROOT, CharacterCard, CharacterStudioError, SchemaValidationError
+from .models import character_path, CARD_STORAGE_ROOT, CharacterCard, CharacterStudioError, SchemaValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class DatasetOperationError(CharacterStudioError):
 
 
 def _load_card(character_id: str) -> CharacterCard:
-    card_path = CARD_STORAGE_ROOT / character_id / "card.json"
+    card_path = character_path(CARD_STORAGE_ROOT, character_id, "card.json")
     if not card_path.exists():
         raise DatasetOperationError(
             "Character Card not found for dataset operation",
@@ -45,7 +45,7 @@ def _load_card(character_id: str) -> CharacterCard:
 
 
 def _character_dataset_dir(character_id: str) -> Path:
-    return DATASET_ROOT / "characters" / character_id
+    return character_path(DATASET_ROOT / "characters", character_id)
 
 
 def get_character_dataset_dir(character_id: str) -> Path:
@@ -58,7 +58,7 @@ def get_subset_dir(character_id: str, subset_name: str) -> Path:
     """Return the absolute path to a dataset subset for a character."""
 
     normalized = validate_subset_name(subset_name)
-    return _character_dataset_dir(character_id) / Path(normalized)
+    return character_path(DATASET_ROOT / "characters", character_id, normalized)
 
 
 def validate_subset_name(subset_name: str) -> str:

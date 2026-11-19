@@ -1,0 +1,40 @@
+name: Stabilization tests
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq curl wget
+      - name: Linux tests and shell syntax
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements-dev.txt
+          while IFS= read -r -d '' file; do bash -n "$file"; done < <(git ls-files -z '*.sh')
+          python -m compileall -q launcher modules tests
+          python -m pytest
+      - name: Windows setup, syntax, and tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          . ./tools/windows.ps1
+          Invoke-AIHubSetup
+          Invoke-AIHubLint -SkipInstall
+          Invoke-AIHubTests -SkipInstall

@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.linux
+
 import json
 import subprocess
 import threading

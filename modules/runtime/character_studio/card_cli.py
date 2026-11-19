@@ -9,22 +9,22 @@ from typing import Iterable, List
 
 from ..common import json_output
 from . import dataset, tagging, trainer
-from .models import CARD_STORAGE_ROOT, CharacterCard, CharacterStudioError
+from .models import character_path, CARD_STORAGE_ROOT, CharacterCard, CharacterStudioError
 
 
 CARD_FILENAME = "card.json"
 
 
 def _get_card_dir(card_id: str) -> Path:
-    return CARD_STORAGE_ROOT / card_id
+    return character_path(CARD_STORAGE_ROOT, card_id)
 
 
 def _get_reference_dir(card_id: str) -> Path:
-    return _get_card_dir(card_id) / "references"
+    return character_path(CARD_STORAGE_ROOT, card_id, "references")
 
 
 def _get_card_path(card_id: str) -> Path:
-    return _get_card_dir(card_id) / CARD_FILENAME
+    return character_path(CARD_STORAGE_ROOT, card_id, CARD_FILENAME)
 
 
 def _parse_tags(tag_text: str | None) -> List[str]:

@@ -26,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from modules.action_commands import shell_action_command
 from modules.path_utils import (
     ensure_file_path,
     get_config_file,
@@ -70,17 +71,7 @@ class ActionSpec:
 
 def _shell_command(script_base: str) -> List[str]:
     script_name = script_base if script_base.endswith(".sh") else f"{script_base}.sh"
-    if IS_WINDOWS:
-        ps_path = WINDOWS_SHELL_DIR / f"{Path(script_name).stem}.ps1"
-        return [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(ps_path),
-        ]
-    return ["bash", str(SHELL_DIR / script_name)]
+    return shell_action_command(PROJECT_ROOT, script_name)
 
 
 ACTION_MAP: Dict[str, ActionSpec] = {

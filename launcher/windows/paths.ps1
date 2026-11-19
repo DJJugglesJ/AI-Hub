@@ -2,7 +2,7 @@
 
 function Get-AIHubConfigRoot {
   if ($Env:AIHUB_CONFIG_DIR) { return $Env:AIHUB_CONFIG_DIR }
-  if ($IsWindows -and $Env:APPDATA) { return (Join-Path $Env:APPDATA "AIHub/config") }
+  if ($env:OS -eq "Windows_NT" -and $Env:APPDATA) { return (Join-Path $Env:APPDATA "AIHub/config") }
   return (Join-Path $Env:USERPROFILE ".config/aihub")
 }
 

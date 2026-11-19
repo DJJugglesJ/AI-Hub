@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .models import CARD_STORAGE_ROOT, CharacterCard
+from .models import character_path, CARD_STORAGE_ROOT, CharacterCard
 
 
 def _normalize_string_list(value: object, field_name: str) -> List[str]:
@@ -66,11 +66,8 @@ def upsert_character_card(payload: Dict[str, object], storage_root: Optional[Pat
         raise ValueError("payload must be a JSON object")
 
     card_id = payload.get("id")
-    if not isinstance(card_id, str) or not card_id.strip():
-        raise ValueError("id is required")
-
     storage_root = Path(storage_root) if storage_root else CARD_STORAGE_ROOT
-    card_path = storage_root / card_id / "card.json"
+    card_path = character_path(storage_root, card_id, "card.json")
     if card_path.exists():
         card = CharacterCard.load(card_id, path=card_path)
     else:

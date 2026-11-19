@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -23,6 +24,27 @@ class CharacterStudioError(Exception):
 
 class SchemaValidationError(CharacterStudioError):
     """Raised when Character Cards do not satisfy the shared schema."""
+
+
+def validate_character_id(card_id: str) -> str:
+    """IDs are portable directory names, never paths."""
+    if (not isinstance(card_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", card_id)
+            or card_id.endswith(".")
+            or card_id.split(".")[0].upper() in
+            {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}):
+        raise SchemaValidationError("Invalid character id", context={"card_id": card_id})
+    return card_id
+
+
+def character_path(root: Path, card_id: str, *parts: str) -> Path:
+    """Reject traversal and existing symlinks that escape the storage root."""
+    validate_character_id(card_id)
+    base = root.resolve()
+    target = (base / card_id).joinpath(*parts).resolve()
+    if base not in target.parents:
+        raise SchemaValidationError("Character path escapes storage root", context={"card_id": card_id})
+    return target
 
 
 # Shared JSON Schema for use by Prompt Builder and other modules.
@@ -119,8 +141,7 @@ class CharacterCard:
         """Validate the Character Card against the shared schema."""
 
         errors = []
-        if not isinstance(self.id, str) or not self.id.strip():
-            errors.append("id must be a non-empty string")
+        validate_character_id(self.id)
         if not isinstance(self.name, str) or not self.name.strip():
             errors.append("name must be a non-empty string")
         if not isinstance(self.nsfw_allowed, bool):
@@ -192,7 +213,7 @@ class CharacterCard:
 
         self.normalize_triggers()
         self.validate()
-        destination = path or CARD_STORAGE_ROOT / self.id / "card.json"
+        destination = path or character_path(CARD_STORAGE_ROOT, self.id, "card.json")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
         return destination
@@ -201,7 +222,8 @@ class CharacterCard:
     def load(cls, card_id: str, path: Optional[Path] = None) -> "CharacterCard":
         """Load a CharacterCard from disk by id."""
 
-        source = path or CARD_STORAGE_ROOT / card_id / "card.json"
+        validate_character_id(card_id)
+        source = path or character_path(CARD_STORAGE_ROOT, card_id, "card.json")
         payload = json.loads(source.read_text(encoding="utf-8"))
         card = cls.from_dict(payload)
         card.validate()

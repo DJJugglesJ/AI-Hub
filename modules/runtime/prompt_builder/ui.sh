@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 CACHE_DIR="${PROMPT_CACHE_DIR:-$HOME/.cache/aihub/prompt_builder}"
 SCENE_FILE="$CACHE_DIR/scene_description.json"
 BUNDLE_PATH="${PROMPT_BUNDLE_PATH:-$CACHE_DIR/prompt_bundle.json}"
@@ -33,7 +33,7 @@ save_scene_and_compile() {
     show_error "Python is required to run the Prompt Builder compiler."
     return 1
   fi
-  PROMPT_BUNDLE_PATH="$BUNDLE_PATH" (cd "$PROJECT_ROOT" && python -m modules.runtime.prompt_builder --scene "$SCENE_FILE") || show_error "Failed to compile scene into prompts."
+  (cd "$PROJECT_ROOT" && PROMPT_BUNDLE_PATH="$BUNDLE_PATH" python -m modules.runtime.prompt_builder --scene "$SCENE_FILE") || show_error "Failed to compile scene into prompts."
 }
 
 parse_characters() {

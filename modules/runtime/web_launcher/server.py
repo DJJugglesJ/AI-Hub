@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
+from modules.action_commands import shell_action_command
 from modules.config_service import config_service
 from modules.runtime.character_studio.models import CharacterCard, CharacterStudioError
 from modules.runtime.character_studio.registry import CharacterCardRegistry
@@ -167,7 +168,7 @@ class WebLauncherAPI:
                 id=action_id,
                 label=label,
                 description=description,
-                command=["bash", str(script_path)],
+                command=shell_action_command(self.project_root, script_name),
             )
         return action_map
 
@@ -445,7 +446,7 @@ class WebLauncherAPI:
         )
 
         process = subprocess.Popen(
-            ["bash", str(self.shell_dir / script_name)],
+            shell_action_command(self.project_root, script_name),
             cwd=self.project_root,
             stdout=log_path.open("w", encoding="utf-8"),
             stderr=subprocess.STDOUT,
@@ -456,7 +457,7 @@ class WebLauncherAPI:
             id=job_id,
             models=models,
             loras=loras,
-            command=["bash", str(self.shell_dir / script_name)],
+            command=shell_action_command(self.project_root, script_name),
             log_path=log_path,
             status_path=status_path,
             started_at=datetime.utcnow().strftime("%Y%m%dT%H%M%SZ"),
