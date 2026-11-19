@@ -10,8 +10,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MANIFEST_DIR="$ROOT_DIR/manifests"
-MODEL_MANIFEST="$MANIFEST_DIR/models.json"
-LORA_MANIFEST="$MANIFEST_DIR/loras.json"
+source "$SCRIPT_DIR/manifest_paths.sh"
+MODEL_MANIFEST=$(resolve_manifest_path models "$ROOT_DIR")
+LORA_MANIFEST=$(resolve_manifest_path loras "$ROOT_DIR")
 source "$SCRIPT_DIR/logging.sh"
 HISTORY_FILE="$HOME/.config/aihub/manifest_history.tsv"
 

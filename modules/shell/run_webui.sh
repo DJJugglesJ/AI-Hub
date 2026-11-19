@@ -7,7 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/logging.sh"
 metrics_record_start "webui"
 
-PROMPT_BUNDLE_PATH="${PROMPT_BUNDLE_PATH:-$HOME/.cache/aihub/prompt_builder/prompt_bundle.json}"
+if [[ -z "${PROMPT_BUNDLE_PATH:-}" ]]; then
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  PROMPT_BUNDLE_PATH=$(PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 -c 'from modules.path_utils import get_data_root; print(get_data_root() / "prompt_builder/prompt_bundle.json")')
+fi
 
 load_prompt_bundle() {
   local path="$PROMPT_BUNDLE_PATH"

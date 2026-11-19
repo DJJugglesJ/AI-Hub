@@ -7,7 +7,7 @@ register_tool(
     ToolSpec(
         id="voice_profiles",
         label="Voice Profiles",
-        description="List placeholder voice profiles for TTS routing.",
+        description="Browse example voice presets. No speech backend is connected.",
         kind="audio",
         entrypoint="modules.runtime.audio.voice_profiles.cli",
         cli_command=["python", "-m", "modules.runtime.audio.voice_profiles.cli"],

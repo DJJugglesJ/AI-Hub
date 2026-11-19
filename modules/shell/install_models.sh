@@ -7,7 +7,8 @@ MODEL_DIR="$HOME/ai-hub/models"
 WEBUI_SD_DIR="$HOME/AI/WebUI/models/Stable-diffusion"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_DIR="$SCRIPT_DIR/../../manifests"
-MODEL_MANIFEST="$MANIFEST_DIR/models.json"
+source "$SCRIPT_DIR/manifest_paths.sh"
+MODEL_MANIFEST=$(resolve_manifest_path "models" "$(cd "$SCRIPT_DIR/../.." && pwd)")
 HEADLESS="${HEADLESS:-0}"
 FORCE_CURATED_SELECTION=0
 source "$SCRIPT_DIR/logging.sh"

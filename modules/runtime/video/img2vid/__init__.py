@@ -14,6 +14,8 @@ register_tool(
         entrypoint="modules.runtime.video.img2vid.cli",
         cli_command=["bash", str(Path(__file__).resolve().parents[3] / "shell" / "run_img2vid.sh")],
         dependencies=(),
+        available=False,
+        availability_error="No generation backend is implemented yet.",
     )
 )
 

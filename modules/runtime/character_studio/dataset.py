@@ -15,10 +15,11 @@ from typing import Dict, Iterable, List
 
 from .models import character_path, CARD_STORAGE_ROOT, CharacterCard, CharacterStudioError, SchemaValidationError
 
+from modules.path_utils import get_data_root
+
 logger = logging.getLogger(__name__)
 
-DATASET_ROOT = Path(__file__).resolve().parent / "datasets"
-DATASET_ROOT.mkdir(exist_ok=True)
+DATASET_ROOT = get_data_root() / "datasets"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 

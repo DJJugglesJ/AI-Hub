@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from modules.runtime.prompt_builder import llm_clients
+from modules.path_utils import get_data_root
 
-CARD_STORAGE_ROOT = Path(__file__).resolve().parent / "character_cards"
-CARD_STORAGE_ROOT.mkdir(exist_ok=True)
+CARD_STORAGE_ROOT = get_data_root() / "character_cards"
 
 
 class CharacterStudioError(Exception):
@@ -215,7 +215,8 @@ class CharacterCard:
         self.validate()
         destination = path or character_path(CARD_STORAGE_ROOT, self.id, "card.json")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        from modules.user_storage import write_json_with_backup
+        write_json_with_backup(destination, self.to_dict())
         return destination
 
     @classmethod

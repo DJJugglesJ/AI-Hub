@@ -78,20 +78,11 @@ def test_web_actions_and_download_jobs_use_platform_command(platform_name, tmp_p
     api = server.WebLauncherAPI(ROOT, log_dir=tmp_path / "logs", history_path=tmp_path / "history.json")
     calls = []
 
-    class Process:
-        pid = 123
-        returncode = 0
-
-        def poll(self):
-            return self.returncode
-
-    def popen(command, **kwargs):
+    def submit(kind, command, cwd, **kwargs):
         calls.append((command, kwargs))
-        kwargs["stdout"].close()
-        return Process()
+        return {"id": "test", "status": "queued", "kind": kind}
 
-    monkeypatch.setattr(server.subprocess, "Popen", popen)
-    monkeypatch.setattr(server.WebLauncherAPI, "_monitor_job", lambda *args: None)
+    monkeypatch.setattr(api.jobs, "submit", submit)
     api.trigger_action("run_webui")
     api.start_installation(models=["Example model"])
     for (command, kwargs), script in zip(calls, ["run_webui.sh", "install_models.sh"]):

@@ -13,7 +13,7 @@ def _load_payload(args: argparse.Namespace) -> Dict[str, Any]:
     if args.payload_json:
         return json.loads(args.payload_json)
     if args.payload_file:
-        return json.loads(args.payload_file.read_text(encoding="utf-8"))
+        return json.loads(args.payload_file.read())
     if args.prompt:
         return {"prompt": args.prompt, "duration": args.duration}
     raw = args.stdin.read() if not args.stdin.isatty() else ""
@@ -34,6 +34,8 @@ def main() -> None:
     payload = _load_payload(args)
     task = run_txt2vid_from_payload(payload)
     print(json.dumps(serialize_task(task), indent=2))
+    if task.status == "failed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,16 @@ def run(command, cwd, env=None, check=True):
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=check, timeout=30)
 
 
+def test_shell_catalog_uses_user_override_then_bundled_fallback(tmp_path):
+    user = tmp_path / "personal catalogs"
+    user.mkdir()
+    (user / "models.json").write_text("[]")
+    command = ['bash', '-c', 'source "$1/modules/shell/manifest_paths.sh"; resolve_manifest_path "$2" "$1"', '_', str(ROOT)]
+    env = {**os.environ, "AIHUB_MANIFEST_DIR": str(user)}
+    assert run(command + ['models'], ROOT, env).stdout.strip() == str(user / 'models.json')
+    assert run(command + ['loras'], ROOT, env).stdout.strip() == str(ROOT / 'manifests/loras.json')
+
+
 @pytest.mark.parametrize("health_exit", [0, 1])
 def test_webui_launch_without_prompt_bundle(tmp_path, health_exit):
     shell = tmp_path / "shell"

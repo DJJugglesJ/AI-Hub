@@ -23,16 +23,8 @@ def test_installation_status_events_exposed(tmp_path):
     api._append_status_event(status_path, "info", "mirror_healthy", "Mirror ready", {"mirror": "primary"})
     api._append_status_event(status_path, "error", "checksum_failed", "Checksum mismatch", "deadbeef")
 
-    job = server.InstallJob(
-        id="job-1",
-        models=["alpha"],
-        loras=["beta"],
-        command=["bash", "script.sh"],
-        log_path=log_path,
-        status_path=status_path,
-        started_at="now",
-    )
-    api._install_jobs[job.id] = job
+    api.jobs._save({"id": "job-1", "kind": "installation", "status": "succeeded",
+                    "log_path": str(log_path), "payload": {"models": ["alpha"], "loras": ["beta"], "status_path": str(status_path)}})
 
     payload = api.list_installations()
     events = payload["jobs"][0]["events"]

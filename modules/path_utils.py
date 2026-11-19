@@ -16,6 +16,16 @@ def _is_windows() -> bool:
     return platform.system().lower().startswith("windows")
 
 
+def get_data_root() -> Path:
+    """Persistent user content, independent of the application checkout."""
+    override = os.environ.get("AIHUB_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+    if _is_windows():
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "AIHub" / "data"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "aihub"
+
+
 def get_config_root() -> Path:
     r"""Return the base configuration directory.
 

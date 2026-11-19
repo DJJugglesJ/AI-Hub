@@ -10,7 +10,8 @@ TMP_MATCHES="/tmp/lora_filtered_results.txt"
 TMP_SOURCE_INFO="/tmp/civitai_lora_source.txt"
 INSTALL_DIR="$HOME/AI/LoRAs"
 MANIFEST_DIR="$SCRIPT_DIR/../../manifests"
-LORA_MANIFEST="$MANIFEST_DIR/loras.json"
+source "$SCRIPT_DIR/manifest_paths.sh"
+LORA_MANIFEST=$(resolve_manifest_path "loras" "$(cd "$SCRIPT_DIR/../.." && pwd)")
 FORCE_CURATED_SELECTION=0
 HEADLESS="${HEADLESS:-0}"
 source "$SCRIPT_DIR/logging.sh"

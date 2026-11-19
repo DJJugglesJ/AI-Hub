@@ -18,7 +18,7 @@ AI tools are powerful, but the ecosystem can feel scattered: every frontend has 
 
 | Area | What AI-Hub does |
 | --- | --- |
-| **Install & launch** | Bootstraps Stable Diffusion WebUI, KoboldAI, SillyTavern, ComfyUI, dependencies, shortcuts, and logs. |
+| **Install & launch** | Bootstraps Stable Diffusion WebUI, KoboldAI, SillyTavern, dependencies, shortcuts, and logs. ComfyUI integration remains planned. |
 | **Web Launcher** | Provides the main browser-based UX at `http://127.0.0.1:3939` for installs, manifests, prompts, characters, and job logs. |
 | **Prompt Builder** | Compiles structured scene JSON into prompt output, LoRA call lists, history, and prompt bundles. |
 | **Character Studio** | Manages character cards, dataset prep, captioning/tagging helpers, and registry views. |
@@ -26,6 +26,16 @@ AI tools are powerful, but the ecosystem can feel scattered: every frontend has 
 | **Cross-platform wrappers** | Keeps Linux/WSL bash and Windows PowerShell/batch launchers aligned without mixing platform-specific concerns. |
 
 ## Start here
+
+Use Python 3.11 or 3.12 (the tested versions). Launcher dependencies are pinned
+in `requirements.txt`; test dependencies are pinned in `requirements-dev.txt`
+and `constraints-dev.txt`. Audio transcription, speech generation and video
+generation do not yet have connected backends and are explicitly unavailable.
+Voice profiles are an example catalog, not an inference service.
+
+Jobs now retain their status and logs across launcher restarts. Personal data
+and manifest edits live outside the checkout. Existing users should follow the
+[storage and job guide](docs/runtime-reliability.md) to import legacy data.
 
 ```bash
 chmod +x install.sh

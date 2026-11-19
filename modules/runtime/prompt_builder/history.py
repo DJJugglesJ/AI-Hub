@@ -12,10 +12,11 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from modules.path_utils import get_data_root
 from typing import Dict, List, Optional
 
 
-DEFAULT_HISTORY_PATH = Path.home() / ".cache/aihub/prompt_builder/prompt_history.json"
+DEFAULT_HISTORY_PATH = get_data_root() / "prompt_builder/prompt_history.json"
 
 
 @dataclass

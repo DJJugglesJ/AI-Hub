@@ -369,7 +369,8 @@ async function triggerAction(actionId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: actionId }),
     });
-    actionResult.textContent = `Started ${result.action} (pid ${result.pid}). Logs: ${result.log_path}`;
+    actionResult.textContent = `Queued ${result.action}. Follow progress in Jobs.`;
+    await refreshTasks();
   } catch (err) {
     actionResult.textContent = `Failed to run action: ${err.message}`;
   }
@@ -737,18 +738,43 @@ async function submitTask(toolId, payload, target) {
 }
 
 function renderTasks(tasks) {
-  taskList.innerHTML = "";
+  taskList.replaceChildren();
   if (!tasks.length) {
-    taskList.innerHTML = '<li class="muted">No tasks created yet.</li>';
+    taskList.textContent = "No jobs yet.";
     return;
   }
   tasks.forEach((task) => {
-    const li = document.createElement("li");
-    const status = task.status || "pending";
-    const result = task.result || {};
-    const summary = result.audio_path || result.video_path || result.transcript || "Ready";
-    li.innerHTML = `<strong>${task.kind}</strong><span>${status}</span><span class="tagline">${summary}</span>`;
-    taskList.appendChild(li);
+    const row = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = task.action || task.kind;
+    const status = document.createElement("span");
+    status.textContent = task.status;
+    const summary = document.createElement("span");
+    summary.textContent = task.error || (task.result ? JSON.stringify(task.result) : "");
+    row.append(title, status, summary);
+    if (["queued", "running"].includes(task.status)) {
+      const cancel = document.createElement("button");
+      cancel.textContent = "Cancel job";
+      cancel.onclick = async () => {
+        cancel.disabled = true;
+        try {
+          await fetchJson(`/api/jobs/${task.id}/cancel`, { method: "POST" });
+          await refreshTasks();
+        } catch (error) { summary.textContent = error.message; cancel.disabled = false; }
+      };
+      row.append(cancel);
+    }
+    const showLog = document.createElement("button");
+    showLog.textContent = "View log";
+    showLog.onclick = async () => {
+      try {
+        const response = await fetchJson(`/api/jobs/${task.id}`);
+        const log = document.getElementById("job-log");
+        log.textContent = response.job.log_tail || "No output yet.";
+      } catch (error) { summary.textContent = error.message; }
+    };
+    row.append(showLog);
+    taskList.append(row);
   });
 }
 
@@ -780,6 +806,15 @@ function hydrateTools(toolsPayload) {
     return;
   }
   const items = toolsPayload.items || [];
+  for (const id of ["tts", "asr", "img2vid", "txt2vid"]) {
+    const form = document.getElementById(`${id}-form`);
+    if (!form) continue;
+    const tool = items.find((entry) => entry.id === id);
+    form.querySelectorAll("input, textarea, button").forEach((input) => { input.disabled = !tool?.available; });
+    let notice = form.querySelector(".availability-note");
+    if (!notice) { notice = document.createElement("p"); notice.className = "availability-note full"; form.append(notice); }
+    notice.textContent = tool?.available ? "" : tool?.availability_error || "Unavailable";
+  }
   if (audioTools) {
     renderTools(audioTools, items.filter((tool) => tool.kind === "audio"));
   }
@@ -886,6 +921,18 @@ async function bootstrap() {
     actionsCount = status.actions.length;
     renderActions(status.actions);
     hydrateTools(status.tools);
+    const notice = document.getElementById("migration-notice");
+    if (notice) notice.hidden = !status.migration_required;
+    const migrate = document.getElementById("migrate-data");
+    if (migrate) migrate.onclick = async () => {
+      migrate.disabled = true;
+      const result = document.getElementById("migration-result");
+      try {
+        const imported = await fetchJson("/api/storage/migrate", { method: "POST" });
+        result.textContent = `Imported ${imported.copied_files} files. Original files were kept.`;
+        await refreshCharacters();
+      } catch (error) { result.textContent = error.message; migrate.disabled = false; }
+    };
   } catch (err) {
     hasError = true;
     setPanelError(actionsList, `Failed to load actions: ${err.message}`, bootstrap);
@@ -1349,10 +1396,9 @@ function renderHistory(history) {
     actions.appendChild(reuseButton);
 
     const logLink = document.createElement("a");
-    logLink.href = `file://${entry.log_path}`;
-    logLink.target = "_blank";
+    logLink.href = "#tasks";
     logLink.rel = "noreferrer";
-    logLink.textContent = "Log";
+    logLink.textContent = "View in Jobs";
     actions.appendChild(logLink);
 
     card.appendChild(info);
@@ -1383,7 +1429,7 @@ function renderJobs(jobs) {
             <p class="muted">${job.started_at}${job.completed_at ? ` → ${job.completed_at}` : ""}</p>
             <p>Models: ${(job.models || []).join(", ") || "—"}</p>
             <p>LoRAs: ${(job.loras || []).join(", ") || "—"}</p>
-            <pre>${(job.log_tail || "").trim() || "(no log output yet)"}</pre>
+            <pre>${escapeHtml((job.log_tail || "").trim()) || "(no log output yet)"}</pre>
             <div class="job-events">
               <p class="muted">Download status</p>
               ${(() => {
@@ -2123,6 +2169,7 @@ function initMainPage() {
   }
   setInterval(() => {
     refreshInstallations().catch(() => {});
+    refreshTasks().catch(() => {});
   }, 5000);
 }
 

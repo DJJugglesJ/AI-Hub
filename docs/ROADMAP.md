@@ -2,6 +2,12 @@ Roadmap
 
 This roadmap summarizes current capabilities and planned milestones for AI-Hub using clear time horizons. Prompt Builder and Character Studio deliverables are integrated directly into the same plan to avoid fragmentation.
 
+Reliability progress
+- Durable jobs provide cancellation, restart recovery, errors and log inspection.
+- User data and manifest edits live outside the checkout, with explicit legacy import and JSON backups.
+- TTS, ASR and video generation remain unavailable until real backends are connected. Voice profiles are an example catalog.
+- AI Hub dependencies are pinned. Upstream application revisions and GPU profiles still need hardware acceptance testing.
+
 Current capabilities
 - Shell-first, modular architecture: installer and launcher helpers live in `modules/shell`, with runtime schemas and utilities (Prompt Builder, Character Studio, manifest validation) in `modules/runtime`.
 - Web Launcher as the primary UX surface: Linux YAD/menu wrappers now redirect to the Web Launcher, with a Windows-friendly CLI menu (`launcher/common/aihub_menu.py`) for headless actions.
@@ -10,7 +16,7 @@ Current capabilities
 - Web Launcher coverage: install/update/launch flows, manifest browsing/editing/validation, pairing presets, Prompt Builder + Character Studio panels, and runtime task panels for audio/video helpers.
 - Manifest and runtime validation: curated model/LoRA manifests with hashes, mirrors, and front-end hints; schemas validate manifests, Prompt Builder scenes, Character Cards, and LoRA metadata with structured errors.
 - Quickstart defaults: updated presets for SD1.5/SDXL, GPU hints, and safer defaults for new users.
-- Modular media agents: audio (TTS/ASR/voice profiles) and video (img2vid/txt2vid) runtime packages share a global registry and the common `Task` dataclass, with JSON CLIs and shell wrappers surfaced in the Web Launcher.
+- Modular media agents: audio and video runtime packages share a global registry and the common `Task` dataclass, with JSON CLIs and shell wrappers surfaced in the Web Launcher.
 - Prompt Builder and Character Studio foundations: schema-defined scenes and cards, prompt compilation, apply-feedback utilities, CLI entrypoints, and guided scene building in the Web Launcher.
 
 Near-term milestones (1–2 releases)

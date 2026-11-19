@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import threading
 import uuid
 from collections import deque
@@ -25,6 +26,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
 from modules.action_commands import shell_action_command
+from modules.path_utils import get_data_root
+from modules.runtime.common.jobs import JobManager, ACTIVE
 from modules.config_service import config_service
 from modules.runtime.character_studio.models import CharacterCard, CharacterStudioError
 from modules.runtime.character_studio.registry import CharacterCardRegistry
@@ -44,12 +47,6 @@ from modules.runtime.prompt_builder import compiler
 from modules.runtime.prompt_builder.history import PromptHistoryStore
 from modules.runtime.prompt_builder.services import UIIntegrationHooks
 from modules.runtime.registry import get_tool, list_tools, load_default_tools
-from modules.runtime.models.tasks import serialize_task, Task
-from modules.runtime.audio.tts import services as tts_services
-from modules.runtime.audio.asr import services as asr_services
-from modules.runtime.audio.voice_profiles import services as voice_profiles_services
-from modules.runtime.video.img2vid import services as img2vid_services
-from modules.runtime.video.txt2vid import services as txt2vid_services
 
 
 logger = logging.getLogger(__name__)
@@ -79,48 +76,6 @@ class ActionSpec:
     command: List[str]
 
 
-@dataclass
-class InstallJob:
-    """Track a running or finished installer invocation."""
-
-    id: str
-    models: List[str] = field(default_factory=list)
-    loras: List[str] = field(default_factory=list)
-    command: List[str] = field(default_factory=list)
-    log_path: Path = Path()
-    status_path: Optional[Path] = None
-    started_at: str = ""
-    completed_at: Optional[str] = None
-    returncode: Optional[int] = None
-    process: Optional[subprocess.Popen] = None
-
-    @property
-    def status(self) -> str:
-        if self.returncode is None and self.process and self.process.poll() is None:
-            return "running"
-        if self.returncode == 0:
-            return "succeeded"
-        if self.returncode is not None:
-            return "failed"
-        return "unknown"
-
-    def to_dict(self, log_tail: str = "", events: Optional[List[Dict[str, object]]] = None) -> Dict[str, object]:
-        return {
-            "id": self.id,
-            "models": self.models,
-            "loras": self.loras,
-            "command": self.command,
-            "log_path": str(self.log_path),
-            "status_path": str(self.status_path) if self.status_path else "",
-            "started_at": self.started_at,
-            "completed_at": self.completed_at,
-            "status": self.status,
-            "returncode": self.returncode,
-            "log_tail": log_tail,
-            "events": events or [],
-        }
-
-
 class WebLauncherAPI:
     """Backend helpers for the web launcher HTTP surface."""
 
@@ -130,23 +85,25 @@ class WebLauncherAPI:
         config_path: Optional[Path] = None,
         log_dir: Optional[Path] = None,
         history_path: Optional[Path] = None,
+        data_dir: Optional[Path] = None,
     ):
         self.project_root = project_root
+        self.data_dir = data_dir or get_data_root()
         self.modules_dir = project_root / "modules"
         self.shell_dir = self.modules_dir / "shell"
-        self.manifest_dir = project_root / "manifests"
+        self.bundled_manifests = project_root / "manifests"
+        self.manifest_dir = self.data_dir / "manifests"
         self.config_path = config_path or Path(config_service.DEFAULT_CONFIG_PATH)
         self._ui_hooks = UIIntegrationHooks()
         self._card_registry = CharacterCardRegistry()
         self._action_map: Dict[str, ActionSpec] = self._build_action_map()
-        self._log_dir = log_dir or Path.home() / ".cache/aihub/web_launcher/logs"
-        self._history_path = history_path or Path.home() / ".cache/aihub/web_launcher/selection_history.json"
+        self._log_dir = log_dir or self.data_dir / "web_launcher/logs"
+        self._history_path = history_path or self.data_dir / "web_launcher/selection_history.json"
         self._prompt_history = PromptHistoryStore()
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
-        self._install_jobs: Dict[str, InstallJob] = {}
-        self._tasks: Dict[str, Task] = {}
-        self._lock = threading.Lock()
+        self.jobs = JobManager(self.data_dir / "jobs")
+        self._lock = threading.RLock()
         load_default_tools()
 
     def _build_action_map(self) -> Dict[str, ActionSpec]:
@@ -163,7 +120,6 @@ class WebLauncherAPI:
 
         action_map: Dict[str, ActionSpec] = {}
         for action_id, label, description, script_name in actions:
-            script_path = self.shell_dir / script_name
             action_map[action_id] = ActionSpec(
                 id=action_id,
                 label=label,
@@ -180,27 +136,22 @@ class WebLauncherAPI:
             raise ValueError(f"Unknown action: {action_id}")
 
         action = self._action_map[action_id]
-        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        log_path = self._log_dir / f"{action_id}-{timestamp}.log"
-        with log_path.open("w", encoding="utf-8") as log_file:
-            process = subprocess.Popen(
-                action.command,
-                cwd=self.project_root,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                env={**os.environ, "HEADLESS": "1"},
-            )
+        return self.jobs.submit("action", action.command, self.project_root,
+                                action=action.id, env=self._job_env())
 
-        return {
-            "action": action.id,
-            "pid": process.pid,
-            "log_path": str(log_path),
-            "command": action.command,
-            "started_at": timestamp,
-        }
+    def _job_env(self):
+        return {**os.environ, "HEADLESS": "1", "AIHUB_DATA_DIR": str(self.data_dir),
+                "AIHUB_MANIFEST_DIR": str(self.manifest_dir)}
+
+    def close(self):
+        self.jobs.close()
+
+    def _manifest_path(self, name):
+        override = self.manifest_dir / f"{name}.json"
+        return override if override.exists() else self.bundled_manifests / f"{name}.json"
 
     def _load_manifest(self, name: str) -> Dict[str, object]:
-        manifest_path = self.manifest_dir / f"{name}.json"
+        manifest_path = self._manifest_path(name)
         base_payload = {"source": None, "items": [], "errors": [], "has_errors": False}
         if not manifest_path.exists():
             message = f"Manifest {manifest_path.name} not found"
@@ -274,6 +225,10 @@ class WebLauncherAPI:
         }
 
     def update_manifest_item(self, manifest_type: str, item_id: str, payload: Dict[str, object]) -> Dict[str, object]:
+        with self._lock:
+            return self._update_manifest_item(manifest_type, item_id, payload)
+
+    def _update_manifest_item(self, manifest_type, item_id, payload):
         if manifest_type not in {"models", "loras"}:
             raise ValueError("Manifest type must be 'models' or 'loras'")
         errors = config_service.validate_against_schema(payload, MANIFEST_UPDATE_SCHEMA)
@@ -282,7 +237,7 @@ class WebLauncherAPI:
         if not payload:
             raise ValueError("At least one field must be provided for manifest updates")
 
-        manifest_path = self.manifest_dir / f"{manifest_type}.json"
+        manifest_path = self._manifest_path(manifest_type)
         if not manifest_path.exists():
             raise ValueError(f"Manifest {manifest_path.name} not found")
         try:
@@ -317,7 +272,8 @@ class WebLauncherAPI:
 
         items[target_index] = updated_entry
         manifest_payload["items"] = items
-        manifest_path.write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+        from modules.user_storage import write_json_with_backup
+        write_json_with_backup(self.manifest_dir / f"{manifest_type}.json", manifest_payload)
 
         detail = self.get_manifest_item(manifest_type, normalized_entry.get("slug", item_id))
         return {
@@ -384,142 +340,44 @@ class WebLauncherAPI:
         except json.JSONDecodeError:
             return []
 
-    def _write_history(self, history: List[Dict[str, object]]) -> None:
-        self._history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
-
-    def _record_history(self, job: InstallJob) -> None:
-        history = self._load_history()
-        history.insert(
-            0,
-            {
-                "id": job.id,
-                "models": job.models,
-                "loras": job.loras,
-                "status": job.status,
-                "log_path": str(job.log_path),
-                "started_at": job.started_at,
-                "completed_at": job.completed_at,
-            },
-        )
-        self._write_history(history[:20])
-
-    def _monitor_job(self, job: InstallJob) -> None:
-        if not job.process:
-            return
-        returncode = job.process.wait()
-        completed_at = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        with self._lock:
-            job.returncode = returncode
-            job.completed_at = completed_at
-        if job.status_path:
-            level = "info" if job.returncode == 0 else "error"
-            message = "Installer completed successfully" if job.returncode == 0 else "Installer failed"
-            self._append_status_event(job.status_path, level, "installer_completed", message, {"returncode": job.returncode})
-        with self._lock:
-            self._install_jobs[job.id] = job
-        self._record_history(job)
-
-    def _start_job(self, *, models: List[str], loras: List[str], script_name: str) -> InstallJob:
-        job_id = f"{Path(script_name).stem}-{uuid.uuid4().hex[:8]}"
-        log_path = self._log_dir / f"{job_id}.log"
-        status_path = self._log_dir / f"{job_id}.status.jsonl"
-        if status_path.exists():
-            status_path.unlink()
-        env = {
-            **os.environ,
-            "HEADLESS": "1",
-            "DOWNLOAD_STATUS_FILE": str(status_path),
-            "DOWNLOAD_LOG_FILE": str(log_path),
-        }
-
+    def _start_job(self, *, models, loras, script_name):
+        status_path = self._log_dir / f"{uuid.uuid4().hex}.status.jsonl"
+        env = {**self._job_env(), "DOWNLOAD_STATUS_FILE": str(status_path),
+               "AIHUB_LOG_PATH": str(status_path.with_suffix(".log"))}
         if models:
             env["CURATED_MODEL_NAMES"] = "\n".join(models)
         if loras:
             env["CURATED_LORA_NAMES"] = "\n".join(loras)
+        return self.jobs.submit("installation", shell_action_command(self.project_root, script_name),
+                                self.project_root, env=env, payload={"models": models, "loras": loras,
+                                "status_path": str(status_path)})
 
-        self._append_status_event(
-            status_path,
-            "info",
-            "installer_started",
-            f"Starting {script_name}",
-            {"models": models, "loras": loras},
-        )
-
-        process = subprocess.Popen(
-            shell_action_command(self.project_root, script_name),
-            cwd=self.project_root,
-            stdout=log_path.open("w", encoding="utf-8"),
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-
-        job = InstallJob(
-            id=job_id,
-            models=models,
-            loras=loras,
-            command=shell_action_command(self.project_root, script_name),
-            log_path=log_path,
-            status_path=status_path,
-            started_at=datetime.utcnow().strftime("%Y%m%dT%H%M%SZ"),
-            process=process,
-        )
-
-        monitor = threading.Thread(target=self._monitor_job, args=(job,), daemon=True)
-        monitor.start()
-        with self._lock:
-            self._install_jobs[job.id] = job
-        return job
-
-    def start_installation(self, models: Optional[List[str]] = None, loras: Optional[List[str]] = None) -> List[Dict[str, object]]:
-        models = models or []
-        loras = loras or []
+    def start_installation(self, models=None, loras=None):
+        models, loras = models or [], loras or []
+        for selection in (models, loras):
+            if not isinstance(selection, list) or any(not isinstance(name, str) or not name.strip() for name in selection):
+                raise ValueError("Selections must be lists of non-empty names")
         if not models and not loras:
             raise ValueError("At least one model or LoRA name must be provided")
-
-        jobs: List[InstallJob] = []
+        jobs = []
         if models:
             jobs.append(self._start_job(models=models, loras=[], script_name="install_models.sh"))
         if loras:
             jobs.append(self._start_job(models=[], loras=loras, script_name="install_loras.sh"))
+        return jobs
 
-        return [job.to_dict() for job in jobs]
-
-    def list_installations(self) -> Dict[str, object]:
-        with self._lock:
-            jobs = list(self._install_jobs.values())
-
-        rendered_jobs: List[Dict[str, object]] = []
-        for job in jobs:
-            completed_at: Optional[str] = None
-            returncode: Optional[int] = None
-            if job.process and job.returncode is None:
-                returncode = job.process.poll()
-                if returncode is not None and job.completed_at is None:
-                    completed_at = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-                if returncode is not None:
-                    with self._lock:
-                        if job.returncode is None:
-                            job.returncode = returncode
-                        if completed_at and job.completed_at is None:
-                            job.completed_at = completed_at
-            if completed_at:
-                self._record_history(job)
-            events = self._load_status_events(job.status_path)
-            job_dict = job.to_dict(
-                log_tail=self._tail_log(job.log_path),
-                events=events,
-            )
-            job_dict["last_error"] = next((ev for ev in reversed(events) if ev.get("level") == "error"), None)
-            job_dict["last_mirror"] = next(
-                (ev for ev in reversed(events) if ev.get("event") in {"mirror_selected", "offline_used"}),
-                None,
-            )
-            rendered_jobs.append(job_dict)
-
-        return {
-            "jobs": rendered_jobs,
-            "history": self._load_history(),
-        }
+    def list_installations(self):
+        rendered = []
+        for job in self.jobs.list():
+            if job["kind"] != "installation":
+                continue
+            job.update(job["payload"])
+            events = self._load_status_events(Path(job["status_path"]))
+            job.update(events=events, log_tail=self.jobs.log_tail(job["id"]),
+                       last_error=next((ev for ev in reversed(events) if ev.get("level") == "error"), None),
+                       last_mirror=next((ev for ev in reversed(events) if ev.get("event") in {"mirror_selected", "offline_used"}), None))
+            rendered.append(job)
+        return {"jobs": rendered, "history": [job for job in rendered if job["status"] not in ACTIVE] + self._load_history()}
 
     def _load_config(self) -> Dict[str, object]:
         loaded = config_service.load_config(str(self.config_path), env_prefix="", overrides=[])
@@ -783,27 +641,13 @@ class WebLauncherAPI:
         if not tool.available:
             raise ValueError(tool.availability_error or f"Tool {tool_id} is unavailable")
 
-        if tool_id == "tts":
-            task = tts_services.run_text_to_speech_from_payload(payload)
-        elif tool_id == "asr":
-            task = asr_services.run_asr_from_payload(payload)
-        elif tool_id == "voice_profiles":
-            task = voice_profiles_services.list_voice_profiles()
-        elif tool_id == "img2vid":
-            task = img2vid_services.run_img2vid_from_payload(payload)
-        elif tool_id == "txt2vid":
-            task = txt2vid_services.run_txt2vid_from_payload(payload)
-        else:
-            raise ValueError(f"Tool {tool_id} is not yet wired to the launcher")
+        if not isinstance(payload, dict):
+            raise ValueError("Task payload must be an object")
+        return self.jobs.submit(tool_id, [sys.executable, "-m", tool.entrypoint], self.project_root,
+                                payload=payload, env=self._job_env(), parse_result=True)
 
-        with self._lock:
-            self._tasks[task.id] = task
-        return serialize_task(task)
-
-    def list_tasks(self) -> Dict[str, object]:
-        with self._lock:
-            tasks = [serialize_task(task) for task in self._tasks.values()]
-        return {"items": tasks}
+    def list_tasks(self):
+        return {"items": self.jobs.list()}
 
     def compile_prompt(self, scene_json: Dict[str, object], feedback: Optional[str] = None) -> Dict[str, object]:
         if not isinstance(scene_json, dict):
@@ -888,7 +732,11 @@ class WebLauncherAPI:
 
     def status(self) -> Dict[str, object]:
         manifests = self.get_manifests()
+        from modules.user_storage import legacy_locations
+        pending = any(path.exists() and any(path.rglob("card.json" if name == "character_cards" else "*"))
+                      for name, path in legacy_locations(self.project_root).items() if name != "manifests")
         return {
+            "migration_required": pending and not (self.data_dir / "migration.json").exists(),
             "actions": self.list_actions(),
             "manifest_counts": {
                 "models": len(manifests.get("models", {}).get("items", [])),
@@ -1022,6 +870,11 @@ class LauncherRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.api.list_tools())
             elif path == "/api/tasks":
                 self._send_json(self.api.list_tasks())
+            elif path.startswith("/api/jobs/"):
+                job_id = path.split("/")[3]
+                job = self.api.jobs.get(job_id)
+                job["log_tail"] = self.api.jobs.log_tail(job_id)
+                self._send_json({"job": job})
             elif path in {"/api/hardware/gpu", "/api/hardware/gpu/diagnostics"}:
                 self._send_json(self.api.gpu_diagnostics())
             elif path == "/api/pairings":
@@ -1037,7 +890,13 @@ class LauncherRequestHandler(SimpleHTTPRequestHandler):
         if not self._require_auth():
             return
         try:
-            if path == "/api/actions":
+            if path == "/api/storage/migrate":
+                from modules.user_storage import migrate_legacy_data
+                self._send_json(migrate_legacy_data(self.api.project_root, self.api.data_dir))
+            elif path.startswith("/api/jobs/") and path.endswith("/cancel"):
+                job_id = path.split("/")[3]
+                self._send_json({"job": self.api.jobs.cancel(job_id)})
+            elif path == "/api/actions":
                 payload = self._read_json_body()
                 action_id = payload.get("action")
                 result = self.api.trigger_action(action_id)
@@ -1198,7 +1057,11 @@ def run_server(host: str = "127.0.0.1", port: int = 3939, auth_token: Optional[s
             *args, api=api, static_dir=static_dir, auth_token=auth_token, **kwargs
         )
 
-    server = ThreadingHTTPServer((host, port), handler)
+    try:
+        server = ThreadingHTTPServer((host, port), handler)
+    except Exception:
+        api.close()
+        raise
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     token_note = " with bearer token auth" if auth_token else ""
@@ -1208,6 +1071,9 @@ def run_server(host: str = "127.0.0.1", port: int = 3939, auth_token: Optional[s
     except KeyboardInterrupt:
         print("Shutting down web launcher...")
         server.shutdown()
+    finally:
+        server.server_close()
+        api.close()
 
 
 def main() -> None:
@@ -1243,28 +1109,32 @@ def main() -> None:
 
     if command == "install":
         api = WebLauncherAPI(project_root=project_root)
-        jobs = api.start_installation(models=args.models, loras=args.loras)
-        print(json.dumps({"jobs": jobs}, indent=2))
-        if not args.wait:
-            return
+        try:
+            jobs = api.start_installation(models=args.models, loras=args.loras)
+            print(json.dumps({"jobs": jobs}, indent=2))
+            # This CLI owns the supervisor, so it must remain alive until completion.
 
-        # Simple progress loop while blocking
-        job_ids = {job["id"] for job in jobs}
-        while True:
-            current = api.list_installations()
-            active = []
-            for job in current.get("jobs", []):
-                if job["id"] not in job_ids:
-                    continue
-                print(
-                    f"[{job['status']}] {job['id']} models={job.get('models', [])} loras={job.get('loras', [])}\n"
-                    f"Log tail:\n{job.get('log_tail', '').strip()}\n---"
-                )
-                if job["status"] == "running":
-                    active.append(job)
-            if not active:
-                break
-            threading.Event().wait(3)
+            # Simple progress loop while blocking
+            job_ids = {job["id"] for job in jobs}
+            while True:
+                current = api.list_installations()
+                active = []
+                for job in current.get("jobs", []):
+                    if job["id"] not in job_ids:
+                        continue
+                    print(
+                        f"[{job['status']}] {job['id']} models={job.get('models', [])} loras={job.get('loras', [])}\n"
+                        f"Log tail:\n{job.get('log_tail', '').strip()}\n---"
+                    )
+                    if job["status"] in ACTIVE:
+                        active.append(job)
+                if not active:
+                    break
+                threading.Event().wait(3)
+            if any(job["status"] != "succeeded" for job in current.get("jobs", []) if job["id"] in job_ids):
+                raise SystemExit(1)
+        finally:
+            api.close()
         return
 
     parser.print_help()

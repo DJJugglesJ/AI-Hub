@@ -13,7 +13,7 @@ def _load_payload(args: argparse.Namespace) -> Dict[str, Any]:
     if args.payload_json:
         return json.loads(args.payload_json)
     if args.payload_file:
-        return json.loads(args.payload_file.read_text(encoding="utf-8"))
+        return json.loads(args.payload_file.read())
     if args.text:
         payload: Dict[str, Any] = {"text": args.text}
         if args.voice:
@@ -37,6 +37,8 @@ def main() -> None:
     payload = _load_payload(args)
     task = run_text_to_speech_from_payload(payload)
     print(json.dumps(serialize_task(task), indent=2))
+    if task.status == "failed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

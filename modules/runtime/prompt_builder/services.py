@@ -10,13 +10,14 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+from modules.path_utils import get_data_root
 from typing import Dict, Optional
 
 from . import compiler
 from .models import PromptAssembly, SceneDescription, validate_scene
 
 
-_DEFAULT_CACHE = Path.home() / ".cache/aihub/prompt_builder/prompt_bundle.json"
+_DEFAULT_CACHE = get_data_root() / "prompt_builder/prompt_bundle.json"
 DEFAULT_BUNDLE_PATH = Path(os.path.expanduser(os.environ.get("PROMPT_BUNDLE_PATH", str(_DEFAULT_CACHE))))
 
 

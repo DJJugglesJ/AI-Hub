@@ -73,7 +73,7 @@ function Invoke-AIHubShellAction {
   Push-Location $projectRoot
   try {
     if ($bashPath) {
-      foreach ($name in @('AIHUB_LOG_PATH', 'AIHUB_LOG_DIR', 'AIHUB_CONFIG_DIR', 'CONFIG_FILE', 'CONFIG_STATE_FILE', 'DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE')) {
+      foreach ($name in @('AIHUB_LOG_PATH', 'AIHUB_LOG_DIR', 'AIHUB_CONFIG_DIR', 'CONFIG_FILE', 'CONFIG_STATE_FILE', 'DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE', 'AIHUB_DATA_DIR', 'AIHUB_MANIFEST_DIR')) {
         $value = [Environment]::GetEnvironmentVariable($name)
         if ($value) { [Environment]::SetEnvironmentVariable($name, $value.Replace('\', '/')) }
       }
@@ -107,7 +107,7 @@ function Invoke-AIHubShellAction {
       $value = [Environment]::GetEnvironmentVariable($name)
       if ($null -ne $value) { $linuxEnv += "$name=$value" }
     }
-    foreach ($name in @('DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE', 'AIHUB_LOG_DIR', 'AIHUB_OFFLINE_BUNDLE', 'DOWNLOAD_OFFLINE_BUNDLE')) {
+    foreach ($name in @('DOWNLOAD_STATUS_FILE', 'DOWNLOAD_LOG_FILE', 'AIHUB_LOG_DIR', 'AIHUB_OFFLINE_BUNDLE', 'DOWNLOAD_OFFLINE_BUNDLE', 'AIHUB_DATA_DIR', 'AIHUB_MANIFEST_DIR')) {
       $value = [Environment]::GetEnvironmentVariable($name)
       if ($value) {
         $linuxPath = & $wsl.Source wslpath -a $value
